@@ -1,0 +1,178 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                        String          @id @default(uuid())
+  createdAt                 DateTime        @default(now())
+  lastLoginAt               DateTime?       // 最后登录时间
+
+  email                     String?         @unique
+  username                  String?         @unique
+  isAdmin                   Boolean         @default(false)
+
+  paymentProcessorUserId    String?         @unique
+  lemonSqueezyCustomerPortalUrl String?     // You can delete this if you're not using Lemon Squeezy as your payments processor.
+  subscriptionStatus        String?         // 'active', 'cancel_at_period_end', 'past_due', 'deleted'
+  subscriptionPlan          String?         // 'hobby', 'pro'
+  datePaid                  DateTime?
+  credits                   Int             @default(10)  // 注册即送10点数用于测试
+  totalSpent                Float           @default(0)   // 总消费金额
+
+  gptResponses              GptResponse[]
+  contactFormMessages       ContactFormMessage[]
+  tasks                     Task[]
+  files                     File[]
+  apiKeys                   ApiKey[]        // API密钥关联
+  dataExtractionRecords     DataExtractionRecord[]  // 数据抓取记录
+  paymentRecords            PaymentRecord[] // 充值记录
+}
+
+model GptResponse {
+  id                        String          @id @default(uuid())
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+
+  user                      User            @relation(fields: [userId], references: [id])
+  userId                    String
+
+  content                   String
+}
+
+model Task {
+  id                        String          @id @default(uuid())
+  createdAt                 DateTime        @default(now())
+
+  user                      User            @relation(fields: [userId], references: [id])
+  userId                    String
+
+  description               String
+  time                      String          @default("1")
+  isDone                    Boolean         @default(false)
+}
+
+model File {
+  id                        String          @id @default(uuid())
+  createdAt                 DateTime        @default(now())
+
+  user                      User            @relation(fields: [userId], references: [id])
+  userId                    String
+
+  name                      String
+  type                      String
+  key                       String
+  uploadUrl                 String
+}
+
+model DailyStats {
+  id                               Int             @id @default(autoincrement())
+  date                             DateTime        @default(now()) @unique
+
+  totalViews                       Int             @default(0)
+  prevDayViewsChangePercent        String          @default("0")
+  userCount                        Int             @default(0)
+  paidUserCount                    Int             @default(0)
+  userDelta                        Int             @default(0)
+  paidUserDelta                    Int             @default(0)
+  totalRevenue                     Float           @default(0)
+  totalProfit                      Float           @default(0)
+
+  sources                          PageViewSource[]
+}
+
+model PageViewSource {
+  @@id([date, name])
+  name                     String
+  date                     DateTime        @default(now())
+
+  dailyStats               DailyStats?     @relation(fields: [dailyStatsId], references: [id])
+  dailyStatsId             Int?
+
+  visitors                 Int
+}
+
+model Logs {
+  id                       Int             @id @default(autoincrement())
+  createdAt                DateTime        @default(now())
+
+  message                  String
+  level                    String
+}
+
+model ContactFormMessage {
+  id                        String          @id @default(uuid())
+  createdAt                 DateTime        @default(now())
+
+  user                      User            @relation(fields: [userId], references: [id])
+  userId                    String
+
+  content                   String
+  isRead                    Boolean         @default(false)
+  repliedAt                 DateTime?
+}
+
+// API密钥管理模型
+model ApiKey {
+  id                        String          @id @default(uuid())
+  createdAt                 DateTime        @default(now())
+  lastUsedAt                DateTime?
+
+  user                      User            @relation(fields: [userId], references: [id])
+  userId                    String
+
+  keyValue                  String          @unique  // 加密存储的API密钥
+  name                      String          // 用户自定义名称
+  isActive                  Boolean         @default(true)
+  usageCount                Int             @default(0)
+
+  dataExtractionRecords     DataExtractionRecord[]
+}
+
+// 数据抓取记录模型
+model DataExtractionRecord {
+  id                        String          @id @default(uuid())
+  createdAt                 DateTime        @default(now())
+
+  user                      User            @relation(fields: [userId], references: [id])
+  userId                    String
+  apiKey                    ApiKey          @relation(fields: [apiKeyId], references: [id])
+  apiKeyId                  String
+
+  platform                  String          // 'douyin', 'xiaohongshu', 'kuaishou', 'bilibili'
+  sourceUrl                 String          // 原始URL
+  creditsUsed               Int             @default(1)  // 消耗的点数
+  status                    String          // 'success', 'failed', 'pending'
+  errorMessage              String?         // 错误信息
+
+  // 提取的数据（JSON格式存储）
+  title                     String?
+  author                    String?
+  playCount                 Int?
+  likeCount                 Int?
+  commentCount              Int?
+  shareCount                Int?
+  collectCount              Int?
+  duration                  String?
+  publishTime               DateTime?
+}
+
+// 充值记录模型
+model PaymentRecord {
+  id                        String          @id @default(uuid())
+  createdAt                 DateTime        @default(now())
+  completedAt               DateTime?
+
+  user                      User            @relation(fields: [userId], references: [id])
+  userId                    String
+
+  amount                    Float           // 充值金额
+  credits                   Int             // 获得点数
+  paymentMethod             String          @default("stripe")
+  transactionId             String?         // 支付处理器交易ID
+  status                    String          @default("pending")  // 'pending', 'completed', 'failed', 'refunded'
+}
